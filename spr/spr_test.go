@@ -16,7 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func makeTestObjects(t *testing.T) (
+func makeTestObjects(t *testing.T, synchronized bool) (
 	s *stackediff, gitmock *mockgit.Mock, githubmock *mockclient.MockClient,
 	input *bytes.Buffer, output *bytes.Buffer) {
 	cfg := config.EmptyConfig()
@@ -37,11 +37,21 @@ func makeTestObjects(t *testing.T) (
 	s.output = output
 	input = &bytes.Buffer{}
 	s.input = input
+	s.synchronized = synchronized
+	githubmock.Synchronized = synchronized
 	return
 }
 
 func TestSPRBasicFlowFourCommitsQueue(t *testing.T) {
-	s, gitmock, githubmock, _, output := makeTestObjects(t)
+	for _, sync := range []bool{true, false} {
+		t.Run(fmt.Sprintf("Sync: %v", sync), func(t *testing.T) {
+			testSPRBasicFlowFourCommitsQueue(t, sync)
+		})
+	}
+}
+
+func testSPRBasicFlowFourCommitsQueue(t *testing.T, sync bool) {
+	s, gitmock, githubmock, _, output := makeTestObjects(t, sync)
 	assert := require.New(t)
 	ctx := context.Background()
 
@@ -215,7 +225,15 @@ func TestSPRBasicFlowFourCommitsQueue(t *testing.T) {
 }
 
 func TestSPRBasicFlowFourCommits(t *testing.T) {
-	s, gitmock, githubmock, _, output := makeTestObjects(t)
+	for _, sync := range []bool{true, false} {
+		t.Run(fmt.Sprintf("Sync: %v", sync), func(t *testing.T) {
+			testSPRBasicFlowFourCommits(t, sync)
+		})
+	}
+}
+
+func testSPRBasicFlowFourCommits(t *testing.T, sync bool) {
+	s, gitmock, githubmock, _, output := makeTestObjects(t, sync)
 	assert := require.New(t)
 	ctx := context.Background()
 
@@ -344,7 +362,15 @@ func TestSPRBasicFlowFourCommits(t *testing.T) {
 }
 
 func TestSPRMergeCount(t *testing.T) {
-	s, gitmock, githubmock, _, output := makeTestObjects(t)
+	for _, sync := range []bool{true, false} {
+		t.Run(fmt.Sprintf("Sync: %v", sync), func(t *testing.T) {
+			testSPRMergeCount(t, sync)
+		})
+	}
+}
+
+func testSPRMergeCount(t *testing.T, sync bool) {
+	s, gitmock, githubmock, _, output := makeTestObjects(t, sync)
 	assert := require.New(t)
 	ctx := context.Background()
 
@@ -419,7 +445,15 @@ func TestSPRMergeCount(t *testing.T) {
 }
 
 func TestSPRAmendCommit(t *testing.T) {
-	s, gitmock, githubmock, _, output := makeTestObjects(t)
+	for _, sync := range []bool{true, false} {
+		t.Run(fmt.Sprintf("Sync: %v", sync), func(t *testing.T) {
+			testSPRAmendCommit(t, sync)
+		})
+	}
+}
+
+func testSPRAmendCommit(t *testing.T, sync bool) {
+	s, gitmock, githubmock, _, output := makeTestObjects(t, sync)
 	assert := require.New(t)
 	ctx := context.Background()
 
@@ -517,7 +551,15 @@ func TestSPRAmendCommit(t *testing.T) {
 }
 
 func TestSPRReorderCommit(t *testing.T) {
-	s, gitmock, githubmock, _, output := makeTestObjects(t)
+	for _, sync := range []bool{true, false} {
+		t.Run(fmt.Sprintf("Sync: %v", sync), func(t *testing.T) {
+			testSPRReorderCommit(t, sync)
+		})
+	}
+}
+
+func testSPRReorderCommit(t *testing.T, sync bool) {
+	s, gitmock, githubmock, _, output := makeTestObjects(t, sync)
 	assert := require.New(t)
 	ctx := context.Background()
 
@@ -649,7 +691,15 @@ func TestSPRReorderCommit(t *testing.T) {
 }
 
 func TestSPRDeleteCommit(t *testing.T) {
-	s, gitmock, githubmock, _, output := makeTestObjects(t)
+	for _, sync := range []bool{true, false} {
+		t.Run(fmt.Sprintf("Sync: %v", sync), func(t *testing.T) {
+			testSPRDeleteCommit(t, sync)
+		})
+	}
+}
+
+func testSPRDeleteCommit(t *testing.T, sync bool) {
+	s, gitmock, githubmock, _, output := makeTestObjects(t, sync)
 	assert := require.New(t)
 	ctx := context.Background()
 
@@ -739,7 +789,15 @@ func TestSPRDeleteCommit(t *testing.T) {
 }
 
 func TestAmendNoCommits(t *testing.T) {
-	s, gitmock, _, _, output := makeTestObjects(t)
+	for _, sync := range []bool{true, false} {
+		t.Run(fmt.Sprintf("Sync: %v", sync), func(t *testing.T) {
+			testAmendNoCommits(t, sync)
+		})
+	}
+}
+
+func testAmendNoCommits(t *testing.T, sync bool) {
+	s, gitmock, _, _, output := makeTestObjects(t, sync)
 	assert := require.New(t)
 	ctx := context.Background()
 
@@ -749,7 +807,15 @@ func TestAmendNoCommits(t *testing.T) {
 }
 
 func TestAmendOneCommit(t *testing.T) {
-	s, gitmock, _, input, output := makeTestObjects(t)
+	for _, sync := range []bool{true, false} {
+		t.Run(fmt.Sprintf("Sync: %v", sync), func(t *testing.T) {
+			testAmendOneCommit(t, sync)
+		})
+	}
+}
+
+func testAmendOneCommit(t *testing.T, sync bool) {
+	s, gitmock, _, input, output := makeTestObjects(t, sync)
 	assert := require.New(t)
 	ctx := context.Background()
 
@@ -766,7 +832,15 @@ func TestAmendOneCommit(t *testing.T) {
 }
 
 func TestAmendTwoCommits(t *testing.T) {
-	s, gitmock, _, input, output := makeTestObjects(t)
+	for _, sync := range []bool{true, false} {
+		t.Run(fmt.Sprintf("Sync: %v", sync), func(t *testing.T) {
+			testAmendTwoCommits(t, sync)
+		})
+	}
+}
+
+func testAmendTwoCommits(t *testing.T, sync bool) {
+	s, gitmock, _, input, output := makeTestObjects(t, sync)
 	assert := require.New(t)
 	ctx := context.Background()
 
@@ -788,7 +862,15 @@ func TestAmendTwoCommits(t *testing.T) {
 }
 
 func TestAmendInvalidInput(t *testing.T) {
-	s, gitmock, _, input, output := makeTestObjects(t)
+	for _, sync := range []bool{true, false} {
+		t.Run(fmt.Sprintf("Sync: %v", sync), func(t *testing.T) {
+			testAmendInvalidInput(t, sync)
+		})
+	}
+}
+
+func testAmendInvalidInput(t *testing.T, sync bool) {
+	s, gitmock, _, input, output := makeTestObjects(t, sync)
 	assert := require.New(t)
 	ctx := context.Background()
 
