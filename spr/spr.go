@@ -16,6 +16,7 @@ import (
 
 	"github.com/ejoffe/profiletimer"
 	"github.com/ejoffe/rake"
+	"github.com/ejoffe/spr/bl"
 	"github.com/ejoffe/spr/config"
 	"github.com/ejoffe/spr/config/config_parser"
 	"github.com/ejoffe/spr/git"
@@ -362,6 +363,22 @@ func (sd *stackediff) MergePullRequests(ctx context.Context, count *uint) {
 	sd.profiletimer.Step("MergePullRequests::End")
 }
 
+func (sd *stackediff) StatusCommitsAndPRSets(ctx context.Context) {
+	state, err := bl.NewReadState(ctx, sd.config, sd.goghclient, sd.repo)
+	check(err)
+
+	if state.Head() == nil {
+		fmt.Fprintf(sd.output, "no local commits\n")
+		return
+	}
+	if sd.DetailEnabled {
+		fmt.Fprint(sd.output, header(sd.config))
+	}
+	for this := state.Head(); this != nil; this = this.Parent {
+		fmt.Fprintf(sd.output, "%s\n", this.String(sd.config))
+	}
+}
+
 // StatusPullRequests fetches all the users pull requests from github and
 //
 //	prints out the status of each. It does not make any updates locally or
@@ -593,21 +610,43 @@ func check(err error) {
 }
 
 func header(config *config.Config) string {
-	if config.User.StatusBitsEmojis {
-		return `
+	if config.User.PRSetWorkflows {
+		if config.User.StatusBitsEmojis {
+			return `
+ ┌─ commit index
+ │  ┌─ github checks pass
+ │  │ ┌── pull request approved
+ │  │ │ ┌─── no merge conflicts
+ │  │ │ │ ┌──── stack check
+ │  │ │ │ │
+`
+		} else {
+			return `
+ ┌─ commit index
+ │  ┌─ github checks pass
+ │  │┌── pull request approved
+ │  ││┌─── no merge conflicts
+ │  │││┌──── stack check
+ │  ││││
+`
+		}
+	} else {
+		if config.User.StatusBitsEmojis {
+			return `
  ┌─ github checks pass
  │ ┌── pull request approved
  │ │ ┌─── no merge conflicts
  │ │ │ ┌──── stack check
  │ │ │ │
 `
-	} else {
-		return `
+		} else {
+			return `
  ┌─ github checks pass
  │┌── pull request approved
  ││┌─── no merge conflicts
  │││┌──── stack check
  ││││
 `
+		}
 	}
 }
