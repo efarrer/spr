@@ -58,8 +58,9 @@ type UserConfig struct {
 type InternalState struct {
 	MergeCheckCommit map[string]string `yaml:"mergeCheckCommit"`
 
-	Stargazer bool `default:"false" yaml:"stargazer"`
-	RunCount  int  `default:"0" yaml:"runcount"`
+	Stargazer             bool `default:"false" yaml:"stargazer"`
+	RunCount              int  `default:"0" yaml:"runcount"`
+	RepoToCommitIdToPRSet map[string]map[string]int
 }
 
 func EmptyConfig() *Config {
@@ -67,7 +68,8 @@ func EmptyConfig() *Config {
 		Repo: &RepoConfig{},
 		User: &UserConfig{},
 		State: &InternalState{
-			MergeCheckCommit: map[string]string{},
+			MergeCheckCommit:      map[string]string{},
+			RepoToCommitIdToPRSet: map[string]map[string]int{},
 		},
 	}
 }

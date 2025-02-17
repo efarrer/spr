@@ -181,26 +181,35 @@ func TestComputeMergeStatus(t *testing.T) {
 	}
 }
 
-func TestGenerateCommits_LinksCommits(t *testing.T) {
+func TestGenerateCommits_LinksCommitsAndSetsIndicies(t *testing.T) {
+	config := config.EmptyConfig()
+	config.Repo.GitHubRepoName = t.Name()
+	config.State.RepoToCommitIdToPRSet[t.Name()] = map[string]int{
+		"11111111": 1,
+		"22222222": 0,
+		"99999999": 9,
+	}
+
 	commits := bl.GenerateCommits(
+		config,
 		[]*object.Commit{
 			{
 				Hash:    plumbing.NewHash("01"),
-				Message: "1",
+				Message: "commit-id:11111111",
 				ParentHashes: []plumbing.Hash{
 					plumbing.NewHash("02"),
 				},
 			},
 			{
 				Hash:    plumbing.NewHash("02"),
-				Message: "2",
+				Message: "commit-id:22222222",
 				ParentHashes: []plumbing.Hash{
 					plumbing.NewHash("03"),
 				},
 			},
 			{
 				Hash:    plumbing.NewHash("03"),
-				Message: "3",
+				Message: "commit-id:33333333",
 			},
 		},
 	)
@@ -209,10 +218,18 @@ func TestGenerateCommits_LinksCommits(t *testing.T) {
 	require.Equal(t, 1, commits[0].Parent.Index)
 	require.Equal(t, 0, commits[0].Parent.Parent.Index)
 
-	require.Equal(t, "1", commits[0].Subject)
-	require.Equal(t, "2", commits[0].Parent.Subject)
-	require.Equal(t, "3", commits[0].Parent.Parent.Subject)
-	require.Equal(t, "1", commits[0].Parent.Parent.Child.Child.Subject)
+	require.Equal(t, 1, *commits[0].PRIndex)
+	require.Equal(t, 0, *commits[0].Parent.PRIndex)
+	require.Nil(t, commits[0].Parent.Parent.PRIndex)
+
+	require.Equal(t, "11111111", commits[0].CommitID)
+	require.Equal(t, "22222222", commits[0].Parent.CommitID)
+	require.Equal(t, "33333333", commits[0].Parent.Parent.CommitID)
+	require.Equal(t, "11111111", commits[0].Parent.Parent.Child.Child.CommitID)
+
+	// Since 99999999 isn't used it should be removed from the mapping
+	_, ok := config.State.RepoToCommitIdToPRSet[t.Name()]["99999999"]
+	require.False(t, ok)
 }
 
 func TestHeadFirst(t *testing.T) {
