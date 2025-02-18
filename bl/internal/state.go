@@ -41,7 +41,8 @@ type PRCommit struct {
 
 // State holds the state of the local commits and PRs
 type State struct {
-	commits []*PRCommit
+	commits     []*PRCommit
+	orphanedPRs []*github.PullRequest
 }
 
 type PullRequestStatus struct {
@@ -192,12 +193,35 @@ func NewState(
 
 	prMap := GeneratePullRequestMap(prss)
 	gitCommits := GenerateCommits(config, commits)
-	for _, gitCommit := range gitCommits {
-		gitCommit.PullRequest = prMap[gitCommit.CommitID]
-	}
+
+	orphanedPRs := AssignPullRequests(gitCommits, prMap)
+
 	SetStackedCheck(config, gitCommits)
 
-	return &State{commits: gitCommits}, nil
+	return &State{
+		commits:     gitCommits,
+		orphanedPRs: orphanedPRs,
+	}, nil
+}
+
+func AssignPullRequests(
+	gitCommits []*PRCommit,
+	prMap map[string]*github.PullRequest,
+) []*github.PullRequest {
+	prGCMap := maputils.NewGC(prMap)
+
+	for _, gitCommit := range gitCommits {
+		if pr, ok := prGCMap.Lookup(gitCommit.CommitID); ok {
+			gitCommit.PullRequest = pr
+		}
+	}
+
+	orphanedPrs := []*github.PullRequest{}
+	for _, v := range prGCMap.GetUnaccessed() {
+		orphanedPrs = append(orphanedPrs, v)
+	}
+
+	return orphanedPrs
 }
 
 func SetStackedCheck(config *config.Config, gitCommits []*PRCommit) {

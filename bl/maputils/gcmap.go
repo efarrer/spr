@@ -33,3 +33,14 @@ func (ngc GCMap[K, V]) PurgeUnaccessed() map[K]V {
 
 	return lookedUp
 }
+
+func (ngc *GCMap[K, V]) GetUnaccessed() map[K]V {
+	unaccessed := map[K]V{}
+
+	for k, v := range ngc.m {
+		if _, ok := ngc.accessed[k]; !ok {
+			unaccessed[k] = v
+		}
+	}
+	return unaccessed
+}
