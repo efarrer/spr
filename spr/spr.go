@@ -508,6 +508,7 @@ func (sd *stackediff) UpdatePRSets(ctx context.Context, sel string) {
 	sd.profiletimer.Step("UpdatePRSets::UpdatePRSetState")
 
 	// Display status
+	sd.StatusCommitsAndPRSets(ctx)
 }
 
 // StatusCommitsAndPRSets outputs the status of all commits and PR sets.
