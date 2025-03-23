@@ -427,7 +427,6 @@ func (sd *stackediff) UpdatePRSets(ctx context.Context, sel string) {
 		})
 	}
 	sd.profiletimer.Step("UpdatePRSets::HandleRedorderdCommits")
-	_ = awaitFetch
 
 	// Delete orphaned PRs (along with the associated branches)
 	_, err = concurrent.SliceMap(state.OrphanedPRs.ToSlice(), func(pr *github.PullRequest) (struct{}, error) {
@@ -443,6 +442,10 @@ func (sd *stackediff) UpdatePRSets(ctx context.Context, sel string) {
 	sd.profiletimer.Step("UpdatePRSets::DeleteOrphanedPRs")
 
 	// Wait for the fetch/prune to complete
+	err = awaitFetch.Await()
+	check(err)
+	sd.profiletimer.Step("UpdatePRSets::Fetch")
+
 	// Update all branches of the mutated PR sets
 	// Update persistent PR set state
 	// Display status
