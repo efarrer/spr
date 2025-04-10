@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 
+	mapset "github.com/deckarep/golang-set/v2"
 	"github.com/ejoffe/spr/config"
 	"github.com/ejoffe/spr/git"
 	"github.com/ejoffe/spr/git/realgit"
@@ -190,6 +191,26 @@ func (gapi GitApi) AppendCommitId() error {
 	}
 
 	return nil
+}
+
+// RemoteBranches returns a list of all remote branches
+func (gapi GitApi) RemoteBranches() (mapset.Set[string], error) {
+	remoteBranches := mapset.NewSet[string]()
+	remote, err := gapi.repo.Remote(gapi.config.Repo.GitHubRemote)
+	if err != nil {
+		return remoteBranches, fmt.Errorf("finding remote branches %w", err)
+	}
+
+	refs, err := remote.List(&ngit.ListOptions{})
+	if err != nil {
+		return remoteBranches, fmt.Errorf("listing remote branches %w", err)
+	}
+	for _, ref := range refs {
+		if ref.Name().IsBranch() {
+			remoteBranches.Add(ref.Name().String())
+		}
+	}
+	return remoteBranches, nil
 }
 
 func (gapi GitApi) BranchExists(branchName string) (bool, error) {
