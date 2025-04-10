@@ -16,11 +16,12 @@ import (
 	"github.com/ejoffe/spr/bl/gitapi"
 	"github.com/ejoffe/spr/config"
 	"github.com/ejoffe/spr/config/config_parser"
+	"github.com/ejoffe/spr/git"
 	"github.com/ejoffe/spr/git/realgit"
 	"github.com/ejoffe/spr/github"
 	"github.com/ejoffe/spr/github/githubclient"
 	"github.com/ejoffe/spr/spr"
-	"github.com/go-git/go-git/v5"
+	ngit "github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing/object"
 	gogithub "github.com/google/go-github/v69/github"
 	"github.com/stretchr/testify/require"
@@ -39,7 +40,8 @@ var prefix string = ""
 
 // resoruces contains various resources for unit testing
 type resources struct {
-	repo      *git.Repository
+	repo      *ngit.Repository
+	gitshell  git.GitInterface
 	stackedpr *spr.Stackediff
 	sb        *strings.Builder
 	cleanup   func()
@@ -87,7 +89,7 @@ func initialize(t *testing.T, cfgfn func(*config.Config)) *resources {
 	wd, err := os.Getwd()
 	require.NoError(t, err)
 
-	repo, err := git.PlainOpen(wd)
+	repo, err := ngit.PlainOpen(wd)
 	require.NoError(t, err)
 
 	goghclient := gogithub.NewClient(nil).WithAuthToken(github.FindToken(cfg.Repo.GitHubHost))
@@ -121,6 +123,7 @@ func initialize(t *testing.T, cfgfn func(*config.Config)) *resources {
 
 	return &resources{
 		repo:      repo,
+		gitshell:  gitcmd,
 		stackedpr: stackedpr,
 		sb:        &sb,
 		cleanup:   cleanupFn,
@@ -142,7 +145,7 @@ type commit struct {
 }
 
 // createCommits creates the commits
-func createCommits(t *testing.T, repo *git.Repository, commits []commit) {
+func createCommits(t *testing.T, repo *ngit.Repository, commits []commit) {
 	t.Helper()
 
 	worktree, err := repo.Worktree()
@@ -160,7 +163,7 @@ func createCommits(t *testing.T, repo *git.Repository, commits []commit) {
 		_, err = worktree.Add(commit.filename)
 		require.NoError(t, err)
 
-		commit, err := worktree.Commit(commit.contents, &git.CommitOptions{
+		commit, err := worktree.Commit(commit.contents, &ngit.CommitOptions{
 			Author: &object.Signature{
 				Name:  "Testy McTestFace",
 				Email: "testy.mctestface@example.com",
@@ -225,6 +228,74 @@ func TestBasicCommitUpdateMergeWithNoSubsetPRSets(t *testing.T) {
 		require.Regexp(t, ".*no local commits.*", resources.sb.String())
 		resources.sb.Reset()
 	})
+}
+
+func TestBasicCommitUpdateMergeWithNoSubsetPRSetsInABranch(t *testing.T) {
+	ctx := context.Background()
+	remoteMain := ""
+	gitHubBranch := ""
+	resources := initialize(t, func(c *config.Config) {
+		c.User.PRSetWorkflows = true
+		gitHubBranch = c.Repo.GitHubBranch
+		remoteMain = c.Repo.GitHubRemote + "/" + c.Repo.GitHubBranch
+	})
+	defer resources.cleanup()
+	name := prefix + t.Name()
+
+	// Create a new branch.
+	branchName := name
+	err := resources.gitshell.Git(fmt.Sprintf("checkout -b %s %s", branchName, remoteMain), nil)
+	require.NoError(t, err)
+
+	t.Run("Starts in expected state", func(t *testing.T) {
+		resources.stackedpr.StatusCommitsAndPRSets(ctx)
+		require.Regexp(t, ".*no local commits.*", resources.sb.String())
+		resources.sb.Reset()
+	})
+
+	t.Run("New commits are shown with spr status", func(t *testing.T) {
+		createCommits(t, resources.repo, []commit{
+			{
+				filename: name + "0",
+				contents: name + "0",
+			}, {
+				filename: name + "1",
+				contents: name + "1",
+			}, {
+				filename: name + "2",
+				contents: name + "2",
+			},
+		})
+
+		resources.stackedpr.StatusCommitsAndPRSets(ctx)
+		require.Regexp(t, "2.*No Pull Request Created", resources.sb.String())
+		require.Regexp(t, "1.*No Pull Request Created", resources.sb.String())
+		require.Regexp(t, "0.*No Pull Request Created", resources.sb.String())
+		resources.sb.Reset()
+	})
+
+	t.Run("Can create PRs with spr update", func(t *testing.T) {
+		resources.stackedpr.UpdatePRSets(ctx, "0-2")
+
+		resources.stackedpr.StatusCommitsAndPRSets(ctx)
+		require.Regexp(t, "2.*s0.*github.com", resources.sb.String())
+		require.Regexp(t, "1.*s0.*github.com", resources.sb.String())
+		require.Regexp(t, "0.*s0.*github.com", resources.sb.String())
+		resources.sb.Reset()
+	})
+
+	t.Run("Can merge PRs with spr merge", func(t *testing.T) {
+		resources.stackedpr.MergePRSet(ctx, "s0")
+		resources.stackedpr.StatusCommitsAndPRSets(ctx)
+		require.Regexp(t, ".*no local commits.*", resources.sb.String())
+		resources.sb.Reset()
+	})
+
+	// Clean up branch
+	err = resources.gitshell.Git(fmt.Sprintf("checkout %s", gitHubBranch), nil)
+	require.NoError(t, err)
+	err = resources.gitshell.Git(fmt.Sprintf("branch -d %s", branchName), nil)
+	require.NoError(t, err)
 }
 
 func TestBasicCommitUpdateMergeWithMultiplePRSets(t *testing.T) {
