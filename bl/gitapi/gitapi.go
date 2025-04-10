@@ -156,7 +156,7 @@ func (gapi GitApi) CreateRemoteBranchWithCherryPick(ctx context.Context, branchN
 	gitworktreeshell.SetStderr(io.Discard)
 	err = gitworktreeshell.Git(fmt.Sprintf("cherry-pick %s", sha), &output)
 	if err != nil {
-		if strings.Contains(output, "Merge conflict in") {
+		if strings.Contains(output, "Merge conflict in") || strings.HasPrefix(output, "CONFLICT ") {
 			return fmt.Errorf("Unable to add %s to the PR set as an earlier commit is required for it to merge properly.\n", sha)
 		}
 		return fmt.Errorf("cherry picking %s into %s in worktree %s %w", sha, branchName, tempDir, err)
