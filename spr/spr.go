@@ -524,6 +524,7 @@ func (sd *Stackediff) UpdatePRSets(ctx context.Context, sel string) {
 	sd.profiletimer.Step("UpdatePRSets::Fetch")
 
 	// Update all branches of the mutated PR sets
+	createdBranches := []string{}
 	for prSet := range state.MutatedPRSets.Iter() {
 		commits := state.CommitsByPRSet(prSet)
 		// Destination branch starts with the "main" branch.
@@ -535,7 +536,14 @@ func (sd *Stackediff) UpdatePRSets(ctx context.Context, sel string) {
 			branchName := git.BranchNameFromCommitId(sd.config, commits[c].CommitID)
 
 			err := gitapi.CreateRemoteBranchWithCherryPick(ctx, branchName, destBranchName, commits[c].CommitHash)
+			if err != nil {
+				// Try to clean up any previously created branches.
+				for _, createdBranch := range createdBranches {
+					gitapi.DeleteRemoteBranch(ctx, createdBranch)
+				}
+			}
 			check(err)
+			createdBranches = append(createdBranches, branchName)
 
 			destBranchName = branchName
 		}

@@ -391,3 +391,50 @@ func TestBasicCommitUpdateMergeWithMultiplePRSets(t *testing.T) {
 		resources.sb.Reset()
 	})
 }
+
+func TestBasicCommitUpdateWithMergeConflictsWithSelectedCommits(t *testing.T) {
+	ctx := context.Background()
+	resources := initialize(t, func(c *config.Config) {
+		c.User.PRSetWorkflows = true
+	})
+	defer resources.validate()
+	name := prefix + t.Name()
+
+	t.Run("Starts in expected state", func(t *testing.T) {
+		resources.stackedpr.StatusCommitsAndPRSets(ctx)
+		require.Regexp(t, ".*no local commits.*", resources.sb.String())
+		resources.sb.Reset()
+	})
+
+	t.Run("New commits are shown with spr status", func(t *testing.T) {
+		resources.createCommits(t, resources.repo, []commit{
+			{
+				filename: name + "0",
+				contents: name + "0",
+			}, {
+				filename: name + "1",
+				contents: name + "1",
+			}, {
+				filename: name + "2",
+				contents: name + "2",
+			}, {
+				filename: name + "0",
+				contents: "more content" + name + "0",
+			},
+		})
+
+		resources.stackedpr.StatusCommitsAndPRSets(ctx)
+		require.Regexp(t, "3.*No Pull Request Created", resources.sb.String())
+		require.Regexp(t, "2.*No Pull Request Created", resources.sb.String())
+		require.Regexp(t, "1.*No Pull Request Created", resources.sb.String())
+		require.Regexp(t, "0.*No Pull Request Created", resources.sb.String())
+		resources.sb.Reset()
+	})
+
+	t.Run("Try to create PRs but get merge conflict due to skipping a dependent commit", func(t *testing.T) {
+		require.Panicsf(t, func() {
+			os.Setenv("SPR_DEBUG", "1") // Hack to force a panic instead of os.Exit(1)
+			resources.stackedpr.UpdatePRSets(ctx, "1-3")
+		}, "Expected a panic when a commit is includes that can't be cherry picked onto the existing commits")
+	})
+}
