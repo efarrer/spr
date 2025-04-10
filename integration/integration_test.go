@@ -40,11 +40,14 @@ var prefix string = ""
 
 // resoruces contains various resources for unit testing
 type resources struct {
-	repo      *ngit.Repository
-	gitshell  git.GitInterface
-	stackedpr *spr.Stackediff
-	sb        *strings.Builder
-	cleanup   func()
+	cfg        *config.Config
+	goghclient *gogithub.Client
+	repo       *ngit.Repository
+	gitshell   git.GitInterface
+	stackedpr  *spr.Stackediff
+	sb         *strings.Builder
+	commitIds  []string
+	validate   func()
 }
 
 func initialize(t *testing.T, cfgfn func(*config.Config)) *resources {
@@ -102,32 +105,41 @@ func initialize(t *testing.T, cfgfn func(*config.Config)) *resources {
 	var sb strings.Builder
 	stackedpr.Output = &sb
 
-	// Create a cleanup function to try and reset the repo
-	cleanupFn := func() {
-		state, err := bl.NewReadState(ctx, cfg, goghclient, repo)
-		require.NoError(t, err)
+	// Try and cleanup and reset the repo
+	state, err := bl.NewReadState(ctx, cfg, goghclient, repo)
+	require.NoError(t, err)
 
-		gitapi := gitapi.New(cfg, repo, goghclient)
-		for _, commit := range state.Commits {
-			if commit.PullRequest != nil {
-				gitapi.DeletePullRequest(ctx, commit.PullRequest)
-			}
+	gitapi := gitapi.New(cfg, repo, goghclient)
+	for _, commit := range state.Commits {
+		if commit.PullRequest != nil {
+			gitapi.DeletePullRequest(ctx, commit.PullRequest)
 		}
+	}
 
-		err = gitcmd.Git(fmt.Sprintf("reset --hard %s/%s", cfg.Repo.GitHubRemote, cfg.Repo.GitHubBranch), &output)
+	err = gitcmd.Git(fmt.Sprintf("reset --hard %s/%s", cfg.Repo.GitHubRemote, cfg.Repo.GitHubBranch), &output)
+	require.NoError(t, err)
+
+	r := &resources{
+		cfg:        cfg,
+		goghclient: goghclient,
+		repo:       repo,
+		gitshell:   gitcmd,
+		stackedpr:  stackedpr,
+		sb:         &sb,
+	}
+
+	// Add a function that will validate that all remote branches associated with any commits created by the unit test are
+	// cleaned up
+	r.validate = func() {
+		branches, err := gitapi.RemoteBranches()
 		require.NoError(t, err)
+		for _, commitId := range r.commitIds {
+			branchName := fmt.Sprintf("refs/heads/%s", git.BranchNameFromCommitId(r.cfg, commitId))
+			require.False(t, branches.Contains(branchName), fmt.Sprintf("%s should be deleted at the end of this integration test", branchName))
+		}
 	}
 
-	// Run the cleanup now
-	cleanupFn()
-
-	return &resources{
-		repo:      repo,
-		gitshell:  gitcmd,
-		stackedpr: stackedpr,
-		sb:        &sb,
-		cleanup:   cleanupFn,
-	}
+	return r
 }
 
 func fileExists(filename string) bool {
@@ -145,7 +157,7 @@ type commit struct {
 }
 
 // createCommits creates the commits
-func createCommits(t *testing.T, repo *ngit.Repository, commits []commit) {
+func (r *resources) createCommits(t *testing.T, repo *ngit.Repository, commits []commit) {
 	t.Helper()
 
 	worktree, err := repo.Worktree()
@@ -175,6 +187,15 @@ func createCommits(t *testing.T, repo *ngit.Repository, commits []commit) {
 		_, err = repo.CommitObject(commit)
 		require.NoError(t, err)
 	}
+
+	// Capture the commit-ids for these commits so we can validate they got deleted
+	ctx := context.Background()
+	state, err := bl.NewReadState(ctx, r.cfg, r.goghclient, r.repo)
+	require.NoError(t, err)
+	for _, commit := range state.Commits {
+		r.commitIds = append(r.commitIds, commit.CommitID)
+	}
+
 }
 
 func TestBasicCommitUpdateMergeWithNoSubsetPRSets(t *testing.T) {
@@ -182,7 +203,7 @@ func TestBasicCommitUpdateMergeWithNoSubsetPRSets(t *testing.T) {
 	resources := initialize(t, func(c *config.Config) {
 		c.User.PRSetWorkflows = true
 	})
-	defer resources.cleanup()
+	defer resources.validate()
 	name := prefix + t.Name()
 
 	t.Run("Starts in expected state", func(t *testing.T) {
@@ -192,7 +213,7 @@ func TestBasicCommitUpdateMergeWithNoSubsetPRSets(t *testing.T) {
 	})
 
 	t.Run("New commits are shown with spr status", func(t *testing.T) {
-		createCommits(t, resources.repo, []commit{
+		resources.createCommits(t, resources.repo, []commit{
 			{
 				filename: name + "0",
 				contents: name + "0",
@@ -239,7 +260,7 @@ func TestBasicCommitUpdateMergeWithNoSubsetPRSetsInABranch(t *testing.T) {
 		gitHubBranch = c.Repo.GitHubBranch
 		remoteMain = c.Repo.GitHubRemote + "/" + c.Repo.GitHubBranch
 	})
-	defer resources.cleanup()
+	defer resources.validate()
 	name := prefix + t.Name()
 
 	// Create a new branch.
@@ -254,7 +275,7 @@ func TestBasicCommitUpdateMergeWithNoSubsetPRSetsInABranch(t *testing.T) {
 	})
 
 	t.Run("New commits are shown with spr status", func(t *testing.T) {
-		createCommits(t, resources.repo, []commit{
+		resources.createCommits(t, resources.repo, []commit{
 			{
 				filename: name + "0",
 				contents: name + "0",
@@ -303,7 +324,7 @@ func TestBasicCommitUpdateMergeWithMultiplePRSets(t *testing.T) {
 	resources := initialize(t, func(c *config.Config) {
 		c.User.PRSetWorkflows = true
 	})
-	defer resources.cleanup()
+	defer resources.validate()
 	name := prefix + t.Name()
 
 	t.Run("Starts in expected state", func(t *testing.T) {
@@ -313,7 +334,7 @@ func TestBasicCommitUpdateMergeWithMultiplePRSets(t *testing.T) {
 	})
 
 	t.Run("New commits are shown with spr status", func(t *testing.T) {
-		createCommits(t, resources.repo, []commit{
+		resources.createCommits(t, resources.repo, []commit{
 			{
 				filename: name + "0",
 				contents: name + "0",
