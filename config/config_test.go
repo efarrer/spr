@@ -42,6 +42,7 @@ func TestDefaultConfig(t *testing.T) {
 			LogGitHubCalls:   false,
 			StatusBitsHeader: true,
 			StatusBitsEmojis: true,
+			PRSetWorkflows:   true,
 		},
 		State: &InternalState{
 			MergeCheckCommit:      map[string]string{},
