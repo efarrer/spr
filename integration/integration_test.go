@@ -438,3 +438,84 @@ func TestBasicCommitUpdateWithMergeConflictsWithSelectedCommits(t *testing.T) {
 		}, "Expected a panic when a commit is includes that can't be cherry picked onto the existing commits")
 	})
 }
+
+func TestBasicCommitUpdateReOrderCommitsReUpdateMerge(t *testing.T) {
+	ctx := context.Background()
+	resources := initialize(t, func(c *config.Config) {
+		c.User.PRSetWorkflows = true
+	})
+	defer resources.validate()
+	name := prefix + t.Name()
+
+	t.Run("Starts in expected state", func(t *testing.T) {
+		resources.stackedpr.StatusCommitsAndPRSets(ctx)
+		require.Regexp(t, ".*no local commits.*", resources.sb.String())
+		resources.sb.Reset()
+	})
+
+	t.Run("New commits are shown with spr status", func(t *testing.T) {
+		resources.createCommits(t, resources.repo, []commit{
+			{
+				filename: name + "0",
+				contents: name + "0",
+			}, {
+				filename: name + "1",
+				contents: name + "1",
+			}, {
+				filename: name + "2",
+				contents: name + "2",
+			},
+		})
+
+		resources.stackedpr.StatusCommitsAndPRSets(ctx)
+		require.Regexp(t, "2.*No Pull Request Created", resources.sb.String())
+		require.Regexp(t, "1.*No Pull Request Created", resources.sb.String())
+		require.Regexp(t, "0.*No Pull Request Created", resources.sb.String())
+		resources.sb.Reset()
+	})
+
+	t.Run("Can create PRs with spr update", func(t *testing.T) {
+		resources.stackedpr.UpdatePRSets(ctx, "0-2")
+
+		resources.stackedpr.StatusCommitsAndPRSets(ctx)
+		require.Regexp(t, "2.*s0.*github.com", resources.sb.String())
+		require.Regexp(t, "1.*s0.*github.com", resources.sb.String())
+		require.Regexp(t, "0.*s0.*github.com", resources.sb.String())
+		resources.sb.Reset()
+	})
+
+	// Reorder commits
+	t.Run("Reorder commits", func(t *testing.T) {
+		// First get commit sha1s
+		var output string
+		state, err := bl.NewReadState(ctx, resources.cfg, resources.goghclient, resources.repo)
+		require.NoError(t, err)
+
+		// Then reset hard
+		err = resources.gitshell.Git(fmt.Sprintf("reset --hard %s/%s", resources.cfg.Repo.GitHubRemote, resources.cfg.Repo.GitHubBranch), &output)
+		require.NoError(t, err)
+
+		// Now cherry-pick commits out of order
+		for _, commit := range state.Commits {
+			err = resources.gitshell.Git(fmt.Sprintf("cherry-pick %s", commit.CommitHash), &output)
+			require.NoError(t, err)
+		}
+	})
+
+	t.Run("Can update PRs with spr update", func(t *testing.T) {
+		resources.stackedpr.UpdatePRSets(ctx, "0-2")
+
+		resources.stackedpr.StatusCommitsAndPRSets(ctx)
+		require.Regexp(t, "2.*s1.*github.com", resources.sb.String())
+		require.Regexp(t, "1.*s1.*github.com", resources.sb.String())
+		require.Regexp(t, "0.*s1.*github.com", resources.sb.String())
+		resources.sb.Reset()
+	})
+
+	t.Run("Can merge PRs with spr merge", func(t *testing.T) {
+		resources.stackedpr.MergePRSet(ctx, "s1")
+		resources.stackedpr.StatusCommitsAndPRSets(ctx)
+		require.Regexp(t, ".*no local commits.*", resources.sb.String())
+		resources.sb.Reset()
+	})
+}
