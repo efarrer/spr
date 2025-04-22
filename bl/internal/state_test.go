@@ -15,6 +15,12 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestFormatSubject(t *testing.T) {
+	require.Equal(t, "                                                  ", internal.FormatSubject(""))
+	require.Equal(t, "1234567890                                        ", internal.FormatSubject("1234567890"))
+	require.Equal(t, "1234567890123456789012345678901234567890123456 ...", internal.FormatSubject("12345678901234567890123456789012345678901234567890extra"))
+}
+
 func TestAssignPullRequests(t *testing.T) {
 	config := config.EmptyConfig()
 	config.Repo.GitHubRepoName = t.Name()

@@ -6,6 +6,7 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"unicode/utf8"
 
 	mapset "github.com/deckarep/golang-set/v2"
 	"github.com/ejoffe/spr/bl/concurrent"
@@ -76,6 +77,82 @@ func indexColor(i *int) string {
 		return github.ColorLightBlue
 	}
 	return github.ColorReset
+}
+
+func padNumber(pad int) func(string) string {
+	return func(s string) string {
+		padding := pad - len(s)
+		if padding > 0 {
+			s += strings.Repeat(" ", padding)
+		}
+		return s
+	}
+}
+
+func FormatSubject(subject string) string {
+	length := 50
+	runeCount := utf8.RuneCountInString(subject)
+	if runeCount <= length {
+		return padNumber(length)(subject)
+	}
+
+	maxLength := 46
+
+	var truncated string
+	count := 0
+	for _, r := range subject {
+		truncated += string(r)
+		count++
+		if count == maxLength {
+			break
+		}
+	}
+
+	return truncated + " ..."
+}
+
+func (prc PRCommit) PRSetString(config *config.Config) string {
+	noPrMessage := "No Pull Request Created"
+	empty := github.StatusBitIcons(config)["empty"]
+
+	prString := fmt.Sprintf("[%s%s%s%s] %s : %s",
+		empty,
+		empty,
+		empty,
+		empty,
+		FormatSubject(prc.Commit.Subject),
+		noPrMessage,
+	)
+
+	if prc.PullRequest != nil {
+		padding := padNumber(5)
+		prInfo := padding(fmt.Sprintf("%3d", prc.PullRequest.Number))
+		if config.User.ShowPRLink {
+			prInfo = fmt.Sprintf("%s %s : https://%s/%s/%s/pull/%s",
+				prc.PullRequest.StatusString(config),
+				FormatSubject(prc.Commit.Subject),
+				config.Repo.GitHubHost, config.Repo.GitHubRepoOwner, config.Repo.GitHubRepoName, padding(fmt.Sprintf("%d", prc.PullRequest.Number)))
+		}
+		prString = prInfo
+	}
+
+	prIndex := "--"
+	if prc.PRIndex != nil {
+		prIndex = fmt.Sprintf("s%d", *prc.PRIndex)
+	}
+
+	line := fmt.Sprintf("%s%2d%s %s%s%s %s",
+		github.ColorLightBlue,
+		prc.Index,
+		github.ColorReset,
+		indexColor(prc.PRIndex),
+		prIndex,
+		github.ColorReset,
+		//FormatSubject(prc.Commit.Subject),
+		prString,
+	)
+
+	return github.TrimToTerminal(config, line)
 }
 
 func (prc PRCommit) String(config *config.Config) string {

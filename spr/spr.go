@@ -618,7 +618,7 @@ func (sd *Stackediff) StatusCommitsAndPRSets(ctx context.Context) {
 	}
 	sd.profiletimer.Step("StatusCommitsAndPRSets::PrintDetails")
 	for this := state.Head(); this != nil; this = this.Parent {
-		fmt.Fprintf(sd.Output, "%s\n", this.String(sd.config))
+		fmt.Fprintf(sd.Output, "%s\n", this.PRSetString(sd.config))
 	}
 	sd.profiletimer.Step("StatusCommitsAndPRSets::OutputStatus")
 }
