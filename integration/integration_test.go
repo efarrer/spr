@@ -664,3 +664,25 @@ func TestBasicCommitUpdateMergeWithMergeCheck(t *testing.T) {
 		resources.sb.Reset()
 	})
 }
+
+func TestMergeWithInvalidPRSetFails(t *testing.T) {
+	ctx := context.Background()
+	resources := initialize(t, func(c *config.Config) {
+		c.User.PRSetWorkflows = true
+	})
+	defer resources.validate()
+
+	t.Run("Starts in expected state", func(t *testing.T) {
+		resources.stackedpr.StatusCommitsAndPRSets(ctx)
+		require.Regexp(t, ".*no local commits.*", resources.sb.String())
+		resources.sb.Reset()
+	})
+
+	t.Run("Can merge PRs with spr merge", func(t *testing.T) {
+		require.Panicsf(t, func() {
+			os.Setenv("SPR_DEBUG", "1") // Hack to force a panic instead of os.Exit(1)
+			resources.stackedpr.MergePRSet(ctx, "s0")
+		}, "Expected a panic when a spr merge with an invalid PR set")
+		resources.sb.Reset()
+	})
+}
